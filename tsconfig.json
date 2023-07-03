@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    /* Language and Environment */
+    "target": "es2020",
+
+    /* Modules */
+    "module": "commonjs",
+    "resolveJsonModule": true,
+    "rootDir": "./src",
+
+    /* JavaScript Support */
+    "allowJs": true,
+    "checkJs": false,
+
+    /* Type Checking */
+    "strict": false,
+
+    /* Interop Constraints */
+    "forceConsistentCasingInFileNames": true /* Disallow inconsistently-cased references to the same file. */,
+
+    /* Emit */
+    "outDir": "dist",
+    "sourceMap": true,
+
+    /* Completeness */
+    "skipLibCheck": true,
+
+    "lib": ["esnext"],
+    "allowSyntheticDefaultImports": true
+  },
+  "include": [
+    "./src",
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+  ]
+}
