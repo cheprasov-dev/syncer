@@ -14,7 +14,7 @@ import {
 import { ICustomer } from "./mongodb/schemas/customers.schema";
 import { IState } from "./mongodb/schemas/state.schema";
 
-const LIMIT = 50;
+const LIMIT = 100;
 const UPDATE_EVENT = "update_event";
 const eventEmitter = new EventEmitter();
 
@@ -47,8 +47,8 @@ async function reindexCustomers(starPosition?: Types.ObjectId, skip = 0) {
   return reindexCustomers(starPosition, skip + 1);
 }
 
-async function syncChunkCustomers(initiator, messages) {
-  // const messages = await messagesState.getMessages(count);
+async function syncChunkCustomers(initiator, count?: number) {
+  const messages = await messagesState.getMessages(count);
   console.log(
     `${initiator}:`,
     `chunk ${messages.length}`,
@@ -82,12 +82,10 @@ async function onChangeWatchEvent(change) {
   change.fullDocument = encryptCustomer(change.fullDocument);
   await messagesState.push(change);
   console.log("messagesState length", messagesState.length);
-
   if (messagesState.length === LIMIT) {
     console.log("send event", UPDATE_EVENT, "limit", LIMIT);
 
-    const messages = await messagesState.getMessages(LIMIT);
-    await syncChunkCustomers("max length", messages);
+    eventEmitter.emit(UPDATE_EVENT, "max length", LIMIT);
   }
 }
 
@@ -113,11 +111,8 @@ export async function sync() {
 
     changeStream.on("change", onChangeWatchEvent);
 
-    setInterval(async () => {
-      // syncChunkCustomers("timer");
-      const messages = await messagesState.getMessages();
-
-      await syncChunkCustomers("timer", messages);
+    setInterval(() => {
+      eventEmitter.emit(UPDATE_EVENT, "timer");
     }, 1000);
   }
 }
