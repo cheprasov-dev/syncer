@@ -1,14 +1,25 @@
+import { EventEmitter } from "events";
+
 import { Types } from "mongoose";
 
-import { encryptCustomer, parseBuffer } from "./helpers";
-import { connect, Customer, CustomerAnonymised } from "./mongodb";
-import { ICustomers } from "./mongodb/schemas/customers.schema";
-import anonymiseQueue from "./rabbitmq/queues/anonymise.queue";
+import messagesState from "./MessagesState";
+import { encryptCustomer } from "./helpers";
+import {
+  connect,
+  Customer,
+  CustomerAnonymised,
+  execTransaction,
+  State,
+} from "./mongodb";
+import { ICustomer } from "./mongodb/schemas/customers.schema";
+import { IState } from "./mongodb/schemas/state.schema";
 
-const LIMIT = 1000;
+const LIMIT = 50;
+const UPDATE_EVENT = "update_event";
+const eventEmitter = new EventEmitter();
 
 async function reindexCustomers(starPosition?: Types.ObjectId, skip = 0) {
-  const customers = await Customer.find<ICustomers>({
+  const customers = await Customer.find<ICustomer>({
     ...(starPosition && { _id: { $gte: starPosition } }),
   })
     .sort({ _id: 1 })
@@ -36,37 +47,79 @@ async function reindexCustomers(starPosition?: Types.ObjectId, skip = 0) {
   return reindexCustomers(starPosition, skip + 1);
 }
 
+async function syncChunkCustomers(initiator, messages) {
+  // const messages = await messagesState.getMessages(count);
+  console.log(
+    `${initiator}:`,
+    `chunk ${messages.length}`,
+    "|",
+    messagesState.length
+  );
+  if (messages.length) {
+    await execTransaction(async (session) => {
+      const preparedData: { customers: object[]; states: IState[] } =
+        messages.reduce(
+          (acc, elem) => {
+            acc.customers.push(elem.fullDocument);
+            acc.states.push({ resumeToken: elem._id });
+            return acc;
+          },
+          {
+            customers: [],
+            states: [],
+          }
+        );
+
+      await CustomerAnonymised.create(preparedData.customers, { session });
+      await State.create(preparedData.states, { session });
+    });
+
+    console.log(`updated ${messages.length}`);
+  }
+}
+
+async function onChangeWatchEvent(change) {
+  change.fullDocument = encryptCustomer(change.fullDocument);
+  await messagesState.push(change);
+  console.log("messagesState length", messagesState.length);
+
+  if (messagesState.length === LIMIT) {
+    console.log("send event", UPDATE_EVENT, "limit", LIMIT);
+
+    const messages = await messagesState.getMessages(LIMIT);
+    await syncChunkCustomers("max length", messages);
+  }
+}
+
 export async function sync() {
   if (process.argv.includes("--full-reindex")) {
     console.log("Full-reindex mode started");
+
     await reindexCustomers();
+
     console.log("Reindex completed");
     process.exit(0);
   } else {
     console.log("Sinc mode started");
 
-    await anonymiseQueue.listening();
+    eventEmitter.on(UPDATE_EVENT, syncChunkCustomers);
+
+    const lastState = await State.findOne({}).sort({ _id: -1 }).exec();
+
+    const changeStream = Customer.watch(
+      [{ $match: { operationType: "insert" } }],
+      { ...(lastState && { resumeAfter: lastState?.resumeToken }) }
+    );
+
+    changeStream.on("change", onChangeWatchEvent);
 
     setInterval(async () => {
-      const tmp = anonymiseQueue.messagesState.getMessages();
-      console.log("interval tmp.length", tmp.length);
+      // syncChunkCustomers("timer");
+      const messages = await messagesState.getMessages();
 
-      await Promise.all(
-        tmp.map(async (tmpMsg) => {
-          const parsed = parseBuffer<ICustomers>(tmpMsg.content);
-          const encryptedCustomersData = encryptCustomer(parsed);
-          try {
-            await CustomerAnonymised.create(encryptedCustomersData);
-          } catch (err) {
-            if (err.code !== 11000) {
-              throw err;
-            }
-          }
-          await anonymiseQueue.confirmMessage(tmpMsg);
-        })
-      );
+      await syncChunkCustomers("timer", messages);
     }, 1000);
   }
 }
 
-connect().then(sync);
+connect().then(sync).catch(console.log);

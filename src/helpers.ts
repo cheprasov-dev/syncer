@@ -3,7 +3,7 @@ import * as crypto from "node:crypto";
 import { faker } from "@faker-js/faker";
 import * as _ from "lodash";
 
-import { ICustomers } from "./mongodb/schemas/customers.schema";
+import { ICustomer } from "./mongodb/schemas/customers.schema";
 
 export function generateRandomString(seed: any, length = 8) {
   let value = seed;
@@ -31,7 +31,7 @@ export function generateRandomString(seed: any, length = 8) {
   return randomString;
 }
 
-export function createRandomUser(): ICustomers {
+export function createRandomUser(): ICustomer {
   return {
     firstName: faker.person.firstName(),
     lastName: faker.person.lastName(),
@@ -53,7 +53,7 @@ export const getValueByKey = _.get;
 
 export const getRandom = _.random;
 
-export function encryptCustomer(data: ICustomers): ICustomers {
+export function encryptCustomer(data: ICustomer): ICustomer {
   const keysToEncrypt = [
     "firstName",
     "lastName",
@@ -83,20 +83,4 @@ export function encryptCustomer(data: ICustomers): ICustomers {
   });
 
   return data;
-}
-
-export function parseBuffer<T>(content: Buffer): T | never {
-  try {
-    return JSON.parse(content.toString());
-  } catch {
-    throw new Error("Ошибка парсинга сообщения");
-  }
-}
-
-export function stringifyBuffer(message): Buffer {
-  try {
-    return Buffer.from(JSON.stringify(message));
-  } catch {
-    throw new Error("Ошибка преобразования JSON в буфер");
-  }
 }

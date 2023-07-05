@@ -2,21 +2,18 @@ import { faker } from "@faker-js/faker";
 
 import { createRandomUser, getRandom } from "./helpers";
 import { connect, Customer } from "./mongodb";
-import { ICustomers } from "./mongodb/schemas/customers.schema";
-import anonymiseQueue from "./rabbitmq/queues/anonymise.queue";
+import { ICustomer } from "./mongodb/schemas/customers.schema";
 
-const MAX_COUNT = 10;
+const MAX_COUNT = 20;
 
 export async function app() {
   console.log("App started");
   setInterval(async () => {
     const random = getRandom(1, MAX_COUNT);
-    const customers: ICustomers[] = faker.helpers.multiple(createRandomUser, {
+    const customers: ICustomer[] = faker.helpers.multiple(createRandomUser, {
       count: random,
     });
-    const newCustomers = await Customer.create(customers);
-
-    newCustomers.map((customer) => anonymiseQueue.send(customer));
+    await Customer.create(customers);
 
     console.log(`${customers.length} elems added`);
   }, 200);

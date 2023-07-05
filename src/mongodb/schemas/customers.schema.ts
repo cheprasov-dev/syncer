@@ -1,4 +1,4 @@
-import { Schema } from "mongoose";
+import { HydratedDocument, Schema } from "mongoose";
 
 interface IAddress {
   line1: string;
@@ -9,14 +9,14 @@ interface IAddress {
   country: string;
 }
 
-export interface ICustomers {
+export interface ICustomer {
   firstName: string;
   lastName: string;
   email: string;
   address: IAddress;
 }
 
-export const customersSchema = new Schema<ICustomers>(
+export const customersSchema = new Schema<ICustomer>(
   {
     firstName: { type: String, required: true },
     lastName: { type: String, required: true },
@@ -35,3 +35,5 @@ export const customersSchema = new Schema<ICustomers>(
     timestamps: true,
   }
 );
+
+export type CustomersDocument = HydratedDocument<ICustomer>;

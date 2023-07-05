@@ -1,23 +1,23 @@
-import RabbitmqAdapter from "./rabbitmq";
+import { Mutex } from "async-mutex";
 
 class MessagesState {
-  adapter: RabbitmqAdapter;
+  private messages = [];
 
-  constructor(adapter) {
-    this.adapter = adapter;
+  private mutex = new Mutex();
+
+  async push(msg) {
+    await this.mutex.runExclusive(async () => {
+      this.messages.push(msg);
+    });
   }
 
-  messages = [];
-
-  push(msg) {
-    this.messages.push(msg);
-  }
-
-  getMessages(count?: number) {
-    if (count) {
-      return this.messages.splice(0, count);
-    }
-    return this.messages.splice(0);
+  async getMessages(count?: number) {
+    return this.mutex.runExclusive(async () => {
+      if (count) {
+        return this.messages.splice(0, count);
+      }
+      return this.messages.splice(0);
+    });
   }
 
   get length() {
@@ -25,4 +25,4 @@ class MessagesState {
   }
 }
 
-export default MessagesState;
+export default new MessagesState();
