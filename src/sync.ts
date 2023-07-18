@@ -14,9 +14,7 @@ import {
 import { ICustomer } from "./mongodb/schemas/customers.schema";
 import { IState } from "./mongodb/schemas/state.schema";
 
-const LIMIT = 100;
-const UPDATE_EVENT = "update_event";
-const eventEmitter = new EventEmitter();
+const LIMIT = 1000;
 
 async function reindexCustomers(starPosition?: Types.ObjectId, skip = 0) {
   const customers = await Customer.find<ICustomer>({
@@ -55,27 +53,31 @@ async function syncChunkCustomers(initiator, count?: number) {
     "|",
     messagesState.length
   );
-  if (messages.length) {
-    await execTransaction(async (session) => {
-      const preparedData: { customers: object[]; states: IState[] } =
-        messages.reduce(
-          (acc, elem) => {
-            acc.customers.push(elem.fullDocument);
-            acc.states.push({ resumeToken: elem._id });
-            return acc;
-          },
-          {
-            customers: [],
-            states: [],
-          }
-        );
-
-      await CustomerAnonymised.create(preparedData.customers, { session });
-      await State.create(preparedData.states, { session });
-    });
-
-    console.log(`updated ${messages.length}`);
+  if (!messages.length) {
+    return false;
   }
+
+  await execTransaction(async (session) => {
+    const preparedData: { customers: object[]; states: IState[] } =
+      messages.reduce(
+        (acc, elem) => {
+          acc.customers.push(elem.fullDocument);
+          acc.states.push({ resumeToken: elem._id });
+          return acc;
+        },
+        {
+          customers: [],
+          states: [],
+        }
+      );
+
+    await CustomerAnonymised.create(preparedData.customers, { session });
+    await State.create(preparedData.states, { session });
+  });
+
+  console.log(`updated ${messages.length}`);
+
+  return true;
 }
 
 async function onChangeWatchEvent(change) {
@@ -83,9 +85,9 @@ async function onChangeWatchEvent(change) {
   await messagesState.push(change);
   console.log("messagesState length", messagesState.length);
   if (messagesState.length === LIMIT) {
-    console.log("send event", UPDATE_EVENT, "limit", LIMIT);
+    console.log("update", "limit", LIMIT);
 
-    eventEmitter.emit(UPDATE_EVENT, "max length", LIMIT);
+    await syncChunkCustomers("max length", LIMIT);
   }
 }
 
@@ -100,8 +102,6 @@ export async function sync() {
   } else {
     console.log("Sinc mode started");
 
-    eventEmitter.on(UPDATE_EVENT, syncChunkCustomers);
-
     const lastState = await State.findOne({}).sort({ _id: -1 }).exec();
 
     const changeStream = Customer.watch(
@@ -111,8 +111,8 @@ export async function sync() {
 
     changeStream.on("change", onChangeWatchEvent);
 
-    setInterval(() => {
-      eventEmitter.emit(UPDATE_EVENT, "timer");
+    setInterval(async () => {
+      await syncChunkCustomers("timer");
     }, 1000);
   }
 }

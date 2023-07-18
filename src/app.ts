@@ -4,7 +4,7 @@ import { createRandomUser, getRandom } from "./helpers";
 import { connect, Customer } from "./mongodb";
 import { ICustomer } from "./mongodb/schemas/customers.schema";
 
-const MAX_COUNT = 20;
+const MAX_COUNT = 10;
 
 export async function app() {
   console.log("App started");
